@@ -19,7 +19,7 @@ go get github/sundy-li/csv
         Marry  bool    `csv:"婚姻状况"`
     }
 
-* ** If you have not indicate the csv tag , it will just use the field name **
+* ** If you have not indicated the csv tag , it will just use the field name as title **
 
 ## Write to file
     
@@ -45,9 +45,10 @@ go get github/sundy-li/csv
         if err != nil {
             println(err.Error())
         }
+        file.Close()
     }
 
-run this code and it will build an csv file
+Run this code and it will build an csv file
 
 ## Write to the ResponseWriter
     
