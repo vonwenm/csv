@@ -13,6 +13,7 @@ import (
 
 type Csv struct {
     mp       map[string]string //fileName --> title
+    names    []string
     hasStart bool
     writer   *bufio.Writer
     needBom  bool
@@ -28,7 +29,7 @@ func NewCsv(w io.Writer) *Csv {
     csv.separator = ","
     csv.newline = "\n"
     csv.hasStart = false
-
+    csv.names = make([]string, 0, 8)
     return csv
 }
 
@@ -63,7 +64,7 @@ func (this *Csv) buildMap(entity interface{}) error {
         if v.Len() < 1 {
             return errors.New("[CSV:error] Slice cannot be empty")
         }
-        return this.buildMap(v.Index(0))
+        return this.buildMap(v.Index(0).Interface())
 
     case reflect.Ptr:
         return this.buildMap(v.Elem().Interface())
@@ -74,6 +75,11 @@ func (this *Csv) buildMap(entity interface{}) error {
             if !v.Field(i).CanInterface() {
                 continue
             }
+
+            if t.Field(i).Anonymous && v.Field(i).CanInterface() {
+                this.buildAnonymous(v.Field(i).Interface())
+            }
+
             var name = t.Field(i).Name
             var titleName = name
             var tag = string(t.Field(i).Tag)
@@ -84,6 +90,7 @@ func (this *Csv) buildMap(entity interface{}) error {
             }
 
             if titleName != "-" && couldCsv(v.Field(i).Interface()) {
+                this.names = append(this.names, name)
                 this.mp[name] = titleName
             }
 
@@ -95,13 +102,54 @@ func (this *Csv) buildMap(entity interface{}) error {
     }
 }
 
+func (this *Csv) buildAnonymous(entity interface{}) {
+    var v = reflect.ValueOf(entity)
+    var t = reflect.TypeOf(entity)
+
+    switch t.Kind() {
+
+    case reflect.Slice:
+        return
+
+    case reflect.Ptr:
+        this.buildAnonymous(v.Elem().Interface())
+        return
+    case reflect.Struct:
+
+        for i := 0; i < t.NumField(); i++ {
+            if !v.Field(i).CanInterface() {
+                continue
+            }
+
+            if t.Field(i).Anonymous && v.Field(i).CanInterface() {
+                this.buildAnonymous(v.Field(i).Interface())
+            }
+
+            var name = t.Field(i).Name
+            var titleName = name
+            var tag = string(t.Field(i).Tag)
+            var regex = regexp.MustCompile(`csv:"([^\s]+)"`)
+            var res = regex.FindSubmatch([]byte(tag))
+            if len(res) > 1 {
+                titleName = string(res[1])
+            }
+
+            if titleName != "-" && couldCsv(v.Field(i).Interface()) {
+                this.names = append(this.names, name)
+                this.mp[name] = titleName
+            }
+
+        }
+    }
+}
+
 func (this *Csv) Parse(entity interface{}) (err error) {
     this.init()
     err = this.buildMap(entity)
     if err != nil {
         return err
     }
-
+    this.writeTitle()
     err = this.parseCsv(entity)
     this.writer.Flush()
     return err
@@ -114,7 +162,7 @@ func (this *Csv) parseCsv(entity interface{}) (err error) {
     switch t.Kind() {
     case reflect.Slice:
         for i := 0; i < v.Len(); i++ {
-            if err := this.Parse(v.Index(i).Interface()); err != nil {
+            if err := this.parseCsv(v.Index(i).Interface()); err != nil {
                 return err
             }
         }
@@ -123,13 +171,10 @@ func (this *Csv) parseCsv(entity interface{}) (err error) {
         return this.parseCsv(v.Elem().Interface())
 
     case reflect.Struct:
-        if !this.hasStart {
-            this.writeTitle(v.Interface())
-        }
         var mp = this.mp
         var strs = make([]string, 0, t.NumField())
-        for i := 0; i < t.NumField(); i++ {
-            var name = t.Field(i).Name
+        fmt.Printf("%#v\n", this.names)
+        for _, name := range this.names {
             _, ok := mp[name]
             if ok {
                 strs = append(strs, bean2Str(v.FieldByName(name).Interface()))
@@ -142,18 +187,16 @@ func (this *Csv) parseCsv(entity interface{}) (err error) {
     return errors.New(fmt.Sprintf("[CSV:error] cannot suppor this struct -> %#v", t.Kind()))
 }
 
-func (this *Csv) writeTitle(entity interface{}) {
+func (this *Csv) writeTitle() {
     if this.hasStart {
         return
     }
     if this.needBom {
         this.writer.WriteString("\xEF\xBB\xBF")
     }
-    var t = reflect.TypeOf(entity)
 
-    var strs = make([]string, 0, t.NumField())
-    for i := 0; i < t.NumField(); i++ {
-        var name = t.Field(i).Name
+    var strs = make([]string, 0, len(this.names))
+    for _, name := range this.names {
         title, ok := this.mp[name]
         if ok {
             strs = append(strs, title)
