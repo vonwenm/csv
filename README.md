@@ -4,7 +4,7 @@ csv
 golang structs to csv file
 
 ## Install
-go get github/sundy-li/csv
+go get github.com/sundy-li/csv
 
 ##  Tag to title mapping
 
