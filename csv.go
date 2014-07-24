@@ -173,7 +173,6 @@ func (this *Csv) parseCsv(entity interface{}) (err error) {
     case reflect.Struct:
         var mp = this.mp
         var strs = make([]string, 0, t.NumField())
-        fmt.Printf("%#v\n", this.names)
         for _, name := range this.names {
             _, ok := mp[name]
             if ok {
