@@ -27,8 +27,8 @@ func NewCsv(w io.Writer) *Csv {
     csv.writer = bufio.NewWriter(w)
     csv.needBom = true
     csv.separator = ","
-    csv.newline = "\n"
-    csv.hasStart = false
+    csv.newline = "\r\n"
+    csv.SetHasStart(false)
     csv.names = make([]string, 0, 8)
     return csv
 }
@@ -42,12 +42,15 @@ func (this *Csv) writeLine(str ...string) {
     for _, s := range ss {
         this.writer.WriteRune(s)
     }
-
-    this.writer.Write([]byte(this.newline))
+    this.writer.WriteString(this.newline)
 }
 
 func (this *Csv) SetBoom(flag bool) {
     this.needBom = flag
+}
+
+func (this *Csv) SetHasStart(start bool) {
+    this.hasStart = start
 }
 
 func (this *Csv) init() {
@@ -83,7 +86,7 @@ func (this *Csv) buildMap(entity interface{}) error {
             var name = t.Field(i).Name
             var titleName = name
             var tag = string(t.Field(i).Tag)
-            var regex = regexp.MustCompile(`csv:"([^\s]+)"`)
+            var regex = regexp.MustCompile(`csv:"([^\"]+)"`)
             var res = regex.FindSubmatch([]byte(tag))
             if len(res) > 1 {
                 titleName = string(res[1])
@@ -223,7 +226,7 @@ func bean2Str(bean interface{}) string {
     case reflect.Int, reflect.Int16, reflect.Int8, reflect.Int32, reflect.Uint, reflect.Int64:
         return strconv.FormatInt(v.Int(), 10)
     case reflect.String:
-        return v.String()
+        return `"` + v.String() + `"`
     case reflect.Bool:
         if v.Bool() {
             return "true"
